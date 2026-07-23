@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from './supabase';
 
 // Datos de la Quinceañera
 const EVENT_CONFIG = {
@@ -18,7 +19,6 @@ const EVENT_CONFIG = {
 };
 
 // Opciones de Regalos
-// Opciones de Regalos (Incluye opciones individuales y grupales)
 const GIFT_LIST = [
     { id: 1, title: "Celular / Smartwatch (Regalo Grupal 📱)", icon: "fa-mobile-screen-button" },
     { id: 2, title: "Fondo para el Viaje de 15 ✈️", icon: "fa-plane" },
@@ -34,7 +34,7 @@ export default function App() {
     const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
     const [selectedGift, setSelectedGift] = useState('');
     
-    // Estado para Formulario RSVP (Asistencia)
+    // Estado Formulario RSVP
     const [rsvpData, setRsvpData] = useState({ 
         fullName: '', 
         attending: 'si', 
@@ -44,8 +44,16 @@ export default function App() {
     });
     const [rsvpSubmitted, setRsvpSubmitted] = useState(false);
     const [toast, setToast] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Cuenta Regresiva al 10 de Octubre de 2026
+    // Estados para Panel Admin
+    const [showAdmin, setShowAdmin] = useState(false);
+    const [adminPassword, setAdminPassword] = useState('');
+    const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+    const [guestsList, setGuestsList] = useState([]);
+    const [isLoadingGuests, setIsLoadingGuests] = useState(false);
+
+    // Cuenta Regresiva
     useEffect(() => {
         const target = new Date(EVENT_CONFIG.date).getTime();
         const interval = setInterval(() => {
@@ -73,16 +81,59 @@ export default function App() {
         showToast(`¡${label} copiado!`);
     };
 
-    const handleRsvpSubmit = (e) => {
+    // ENVÍO DE FORMULARIO A SUPABASE
+    const handleRsvpSubmit = async (e) => {
         e.preventDefault();
-        setRsvpSubmitted(true);
-        showToast("¡Confirmación recibida exitosamente!");
+        setIsSubmitting(true);
+
+        const payload = { 
+            nombre: rsvpData.fullName,
+            asiste: rsvpData.attending === 'si' ? 'Sí' : 'No', 
+            acompañante: Number(rsvpData.companions),
+            regalo: selectedGift || rsvpData.giftChoice || 'Ninguno'
+        };
+
+        const { data, error } = await supabase
+            .from('invitados')
+            .insert([payload]);
+
+        setIsSubmitting(false);
+
+        if (error) {
+            console.error('Detalle del error Supabase:', error.message, error.details, error.hint);
+            showToast("⚠️ Hubo un error al guardar tu confirmación.");
+        } else {
+            setRsvpSubmitted(true);
+            showToast("¡Confirmación recibida exitosamente!");
+        }
+    };
+
+    // CONSULTAR INVITADOS DESDE SUPABASE
+    const fetchGuests = async () => {
+        setIsLoadingGuests(true);
+        const { data, error } = await supabase.from('invitados').select('*');
+        if (error) {
+            console.error("Error al traer invitados:", error);
+            showToast("Error al cargar la lista de invitados.");
+        } else {
+            setGuestsList(data || []);
+        }
+        setIsLoadingGuests(false);
+    };
+
+    const handleAdminLogin = (e) => {
+        e.preventDefault();
+        if (adminPassword === '1234') { // 👈 Tu contraseña para ver los invitados
+            setIsAdminAuthenticated(true);
+            fetchGuests();
+        } else {
+            showToast("🔑 Contraseña incorrecta");
+        }
     };
 
     return (
         <div className="min-h-screen bg-rose-50/40 text-slate-800 font-sans pb-16">
             
-            {/* Mensaje flotante de confirmación/copiado */}
             {toast && (
                 <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-700 text-white px-6 py-3 rounded-full shadow-xl text-sm font-semibold animate-bounce">
                     {toast}
@@ -139,14 +190,13 @@ export default function App() {
                     <p className="text-xs text-slate-500">Un recorrido inolvidable para compartir con ustedes</p>
                 </div>
                 <div className="relative aspect-video rounded-3xl overflow-hidden shadow-lg border-4 border-white bg-black">
-                    {/* Cambiá esta URL por el video de YouTube que quieras poner */}
-                  <iframe 
-    className="w-full h-full"
-    src="https://www.youtube.com/embed/kei9JzhdiMg" 
-    title="Video de Princesa"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-    allowFullScreen
-></iframe>
+                    <iframe 
+                        className="w-full h-full"
+                        src="https://www.youtube.com/embed/kei9JzhdiMg" 
+                        title="Video de Princesa"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowFullScreen
+                    ></iframe>
                 </div>
             </section>
 
@@ -156,20 +206,20 @@ export default function App() {
                     <h2 className="text-2xl font-bold text-slate-800">Galería de Fotos</h2>
                     <p className="text-xs text-slate-500">Momentos preferidos de Princesa</p>
                 </div>
-              <div className="flex overflow-x-auto gap-4 snap-x snap-mandatory py-4 px-2 scrollbar-none">
-    {Array.from({ length: 32 }, (_, i) => `/foto${i + 1}.jpeg`).map((imgUrl, idx) => (
-        <div 
-            key={idx} 
-            className="flex-none w-64 sm:w-80 aspect-square rounded-2xl overflow-hidden shadow-md border-2 border-white snap-center hover:scale-105 transition duration-300"
-        >
-            <img 
-                src={imgUrl} 
-                alt={`Foto Princesa ${idx + 1}`} 
-                className="w-full h-full object-cover" 
-            />
-        </div>
-    ))}
-</div>
+                <div className="flex overflow-x-auto gap-4 snap-x snap-mandatory py-4 px-2 scrollbar-none">
+                    {Array.from({ length: 32 }, (_, i) => `/foto${i + 1}.jpeg`).map((imgUrl, idx) => (
+                        <div 
+                            key={idx} 
+                            className="flex-none w-64 sm:w-80 aspect-square rounded-2xl overflow-hidden shadow-md border-2 border-white snap-center hover:scale-105 transition duration-300"
+                        >
+                            <img 
+                                src={imgUrl} 
+                                alt={`Foto Princesa ${idx + 1}`} 
+                                className="w-full h-full object-cover" 
+                            />
+                        </div>
+                    ))}
+                </div>
             </section>
 
             {/* 🎁 LISTA DE REGALOS & DATOS BANCARIOS */}
@@ -179,7 +229,6 @@ export default function App() {
                     <h2 className="font-bold text-2xl text-slate-800">Mesa de Regalos</h2>
                     <p className="text-xs text-slate-500 mb-6">Tu presencia es lo más importante. Si deseas hacerle un regalo a Princesa:</p>
 
-                    {/* Tarjetas de Regalo Elegibles */}
                     <div className="grid grid-cols-2 gap-3 mb-6">
                         {GIFT_LIST.map((gift) => (
                             <button 
@@ -201,7 +250,6 @@ export default function App() {
                         ))}
                     </div>
 
-                    {/* CBU & Alias */}
                     <div className="bg-slate-50 p-4 rounded-2xl text-xs space-y-2 text-left border border-slate-100">
                         <div className="flex justify-between items-center">
                             <span>Alias: <strong>{EVENT_CONFIG.alias}</strong></span>
@@ -280,13 +328,88 @@ export default function App() {
                                 </div>
                             )}
 
-                            <button type="submit" className="w-full bg-rose-600 text-white font-bold py-3 rounded-xl hover:bg-rose-700 text-sm shadow-md transition">
-                                Enviar Confirmación
+                            <button 
+                                type="submit" 
+                                disabled={isSubmitting}
+                                className="w-full bg-rose-600 text-white font-bold py-3 rounded-xl hover:bg-rose-700 text-sm shadow-md transition disabled:opacity-50"
+                            >
+                                {isSubmitting ? 'Enviando...' : 'Enviar Confirmación'}
                             </button>
                         </form>
                     )}
                 </div>
             </section>
+
+            {/* 🔒 SECCIÓN ADMINISTRADOR / LISTA DE INVITADOS */}
+            <footer className="max-w-4xl mx-auto px-4 pt-12 border-t border-rose-200 text-center">
+                <button 
+                    onClick={() => setShowAdmin(!showAdmin)}
+                    className="text-xs text-rose-600 hover:underline font-semibold"
+                >
+                    {showAdmin ? 'Ocultar Panel Admin' : '🔒 Ver Lista de Invitados (Solo Organizadores)'}
+                </button>
+
+                {showAdmin && (
+                    <div className="mt-6 bg-white p-6 rounded-3xl shadow-lg border border-slate-200 text-left">
+                        {!isAdminAuthenticated ? (
+                            <form onSubmit={handleAdminLogin} className="max-w-xs mx-auto text-center space-y-3">
+                                <h3 className="font-bold text-slate-700 text-sm">Acceso Admin</h3>
+                                <input 
+                                    type="password" 
+                                    placeholder="Contraseña (1234)"
+                                    value={adminPassword}
+                                    onChange={(e) => setAdminPassword(e.target.value)}
+                                    className="w-full px-4 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 text-center"
+                                />
+                                <button type="submit" className="w-full bg-slate-800 text-white text-xs font-bold py-2 rounded-xl">
+                                    Ingresar
+                                </button>
+                            </form>
+                        ) : (
+                            <div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="font-bold text-slate-800 text-base">
+                                        Invitados Confirmados ({guestsList.length})
+                                    </h3>
+                                    <button 
+                                        onClick={fetchGuests}
+                                        className="text-xs bg-rose-100 text-rose-700 px-3 py-1 rounded-full font-bold hover:bg-rose-200"
+                                    >
+                                        🔄 Actualizar
+                                    </button>
+                                </div>
+
+                                {isLoadingGuests ? (
+                                    <p className="text-xs text-slate-400 text-center py-4">Cargando lista...</p>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-xs text-slate-600">
+                                            <thead className="bg-rose-50 text-rose-800 uppercase font-bold text-[10px]">
+                                                <tr>
+                                                    <th className="p-3">Nombre</th>
+                                                    <th className="p-3">Asiste</th>
+                                                    <th className="p-3">Acompañantes</th>
+                                                    <th className="p-3">Regalo</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {guestsList.map((guest, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50">
+                                                        <td className="p-3 font-semibold text-slate-800">{guest.nombre}</td>
+                                                        <td className="p-3">{guest.asiste}</td>
+                                                        <td className="p-3">{guest.acompañante}</td>
+                                                        <td className="p-3">{guest.regalo || 'Ninguno'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </footer>
 
         </div>
     );
